@@ -1,0 +1,134 @@
+-- Réinitialiser les tables existantes si nécessaire
+drop table if exists public.transactions cascade;
+drop table if exists public.orders cascade;
+drop table if exists public.products cascade;
+drop table if exists public.subscriptions cascade;
+drop table if exists public.settings cascade;
+drop table if exists public.users cascade;
+
+-- Activer l'extension UUID
+create extension if not exists "uuid-ossp";
+
+-- Créer la table users
+create table public.users (
+  id uuid references auth.users primary key,
+  email text not null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+-- Créer la table settings
+create table public.settings (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references public.users not null,
+  language text default 'fr',
+  email_notifications boolean default true,
+  push_notifications boolean default true,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+-- Créer la table subscriptions
+create table public.subscriptions (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references public.users not null,
+  status text not null check (status in ('inactive', 'trial', 'active', 'canceled')),
+  trial_end_date timestamp with time zone,
+  subscription_end_date timestamp with time zone,
+  has_trial_been_used boolean default false,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+-- Activer RLS sur toutes les tables
+alter table public.users enable row level security;
+alter table public.settings enable row level security;
+alter table public.subscriptions enable row level security;
+
+-- Créer les politiques pour users
+create policy "Users can view their own data"
+  on users for select
+  using (auth.uid() = id);
+
+create policy "Users can update their own data"
+  on users for update
+  using (auth.uid() = id);
+
+-- Créer les politiques pour settings
+create policy "Users can view their own settings"
+  on settings for select
+  using (auth.uid() = user_id);
+
+create policy "Users can update their own settings"
+  on settings for update
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own settings"
+  on settings for insert
+  with check (auth.uid() = user_id);
+
+-- Créer les politiques pour subscriptions
+create policy "Users can view their own subscription"
+  on subscriptions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can update their own subscription"
+  on subscriptions for update
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own subscription"
+  on subscriptions for insert
+  with check (auth.uid() = user_id);
+
+-- Créer la fonction pour mettre à jour updated_at
+create or replace function update_updated_at_column()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+-- Créer les triggers pour updated_at
+create trigger update_users_updated_at
+  before update on users
+  for each row
+  execute function update_updated_at_column();
+
+create trigger update_settings_updated_at
+  before update on settings
+  for each row
+  execute function update_updated_at_column();
+
+create trigger update_subscriptions_updated_at
+  before update on subscriptions
+  for each row
+  execute function update_updated_at_column();
+
+-- Créer la fonction pour gérer la création d'utilisateur
+create or replace function public.handle_new_user()
+returns trigger
+security definer set search_path = public
+language plpgsql
+as $$
+begin
+  -- Créer l'entrée utilisateur
+  insert into public.users (id, email)
+  values (new.id, new.email);
+
+  -- Créer les paramètres par défaut
+  insert into public.settings (user_id)
+  values (new.id);
+
+  -- Créer l'abonnement inactif
+  insert into public.subscriptions (user_id, status, has_trial_been_used)
+  values (new.id, 'inactive', false);
+
+  return new;
+end;
+$$;
+
+-- Créer le trigger
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();

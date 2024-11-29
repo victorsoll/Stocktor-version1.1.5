@@ -1,0 +1,31 @@
+-- Supprimer d'abord les triggers et fonctions existants
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user();
+
+-- Créer la fonction pour gérer la création d'utilisateur
+create or replace function public.handle_new_user()
+returns trigger
+security definer set search_path = public
+language plpgsql
+as $$
+begin
+  -- Créer l'entrée utilisateur
+  insert into public.users (id, email)
+  values (new.id, new.email);
+
+  -- Créer les paramètres par défaut
+  insert into public.settings (user_id)
+  values (new.id);
+
+  -- Créer l'abonnement inactif
+  insert into public.subscriptions (user_id, status, has_trial_been_used)
+  values (new.id, 'inactive', false);
+
+  return new;
+end;
+$$;
+
+-- Créer le trigger
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();

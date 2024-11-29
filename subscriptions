@@ -1,0 +1,15 @@
+-- Ajouter les politiques RLS pour subscriptions
+create policy "Users can view their own subscription"
+  on subscriptions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can update their own subscription"
+  on subscriptions for update
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own subscription"
+  on subscriptions for insert
+  with check (auth.uid() = user_id);
+
+-- Activer RLS sur la table
+alter table subscriptions enable row level security;

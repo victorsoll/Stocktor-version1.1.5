@@ -1,0 +1,74 @@
+-- Supprimer les tables existantes si elles existent
+drop table if exists products cascade;
+drop table if exists orders cascade;
+
+-- Table products
+create table products (
+  id uuid primary key,
+  name text not null,
+  brand text not null,
+  purchasePrice decimal not null,
+  purchaseDate timestamp not null,
+  imageUrl text not null,
+  status text not null,
+  salePrice decimal,
+  saleDate timestamp,
+  category text not null,
+  description text,
+  user_id uuid references auth.users not null
+);
+
+-- Table orders
+create table orders (
+  id uuid primary key,
+  name text not null,
+  brand text not null,
+  purchasePrice decimal not null,
+  purchaseDate timestamp not null,
+  imageUrl text not null,
+  category text not null,
+  description text,
+  status text not null,
+  sellerName text,
+  sellerPhone text,
+  sellerEmail text,
+  user_id uuid references auth.users not null
+);
+
+-- Ajouter les politiques RLS pour products
+create policy "Users can view their own products"
+  on products for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own products"
+  on products for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own products"
+  on products for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own products"
+  on products for delete
+  using (auth.uid() = user_id);
+
+-- Ajouter les politiques RLS pour orders
+create policy "Users can view their own orders"
+  on orders for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own orders"
+  on orders for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own orders"
+  on orders for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own orders"
+  on orders for delete
+  using (auth.uid() = user_id);
+
+-- Activer RLS sur les tables
+alter table products enable row level security;
+alter table orders enable row level security;
